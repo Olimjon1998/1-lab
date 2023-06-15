@@ -1,0 +1,199 @@
+ IPTABLES:
+
+# Kluchovoy so'zlar:
+^
+^
+^
+^
+^
+^
+
+# Ciscoda ACL tushunchasi Linuxdagi Iptables tushunchasi bilan deyarli tengdir.
+ Linux qurilmalarini router sifatida ishlatib 2 hil tarmoqlarni o'zaro bog'lash
+ mumkin. Linux qurilmalarida ham Cisco routerlar kabi begona tarmoqni tanimeydi 
+ va uning paketlarini qabul qilmasdan tashib yuboradi. 
+# Ciscodagi L3 qurilmasini router sifatida ishlatish uchun "iprouting" 
+ kamandasini ishlatamiz, Linux qurilmalarida ham ularni router sifatida ishlatish
+ uchun shu hizmatni yoqishimiz kerak.  
+ Quyidagicha yoqiladi:
+
+*vim /etc/sysctl.conf > ichiga kirib quyidagicha yoziladi
+
+net.ipv4.ip_forward=1  > shu narsa yozilgan bo'ladi, oldida "#" shu belgi bilan.
+                         agar oldida rishotka yoki 1 o'rnida 0 bo'lsa "iprouting"
+                         hizmati o'chiq degani, 1 esa yoniq degani. Agar fayl 
+                         ichida hech qandey kamandalar yozilmagan bo'lsa, 
+                         yuqoridagi kamandani o'zi yozib qo'yilishi kerak.
+*sysctl -p > iprouting yozilgandan so'ng perezagruzka berish kerak, yoki reboot.
+
+# sysctl.conf fayl bu kernelga har hil funksiyalarni beradigan va chekleydigan
+ fayl hisoblanadi. Yadro bilan ishleydigan fayl, yadroni shu yerdan tuning ham
+ qilish mumkin, tuning degani ko'proq conection larni ko'taradigan qilib sozlash
+ mumkin.
+
+# Iptables bu software firewall hisoblanadi, firewall bu filtirlash, ya'ni
+ nimalarga qarab filtirleydi, IP-PORT-PROTOCOL shu 3 hususiyatiga qarab
+ filtirlash mumkin. 
+
+##################################################################################
+--- iptables --- ustanovka DEBIAN
+
+*apt install iptables > ustanovka qilish, ayrim debian oilasidagi sistemadalarda
+                        o'rnatilgan bo'ladi.
+
+# iptables faqat o'zi turgan sistemani himoya qiladi, agar iptebles ustanovka
+ qilingan server router sifatida ishlayotgan bo'lsa, o'sha routerning tarmoqlarini
+ ham himoya qilishi mumkin. Tarmoq uchun alohida router sotib olish zarur emas, 
+ 1ta serverda alohida vertualka ko'tariladi debian uchun va shuning ichida o'sha
+ tarmoq uchun iptables yozsangiz bo'ladi.
+
+# iptablesda 3 hil tushuncha mavjud, rules, target, chain.
+ 
+       |ACCEPT=ruhsat                                          |yozilgan qoidalar 
+Target |DROP=tashib yuborish                                   |to'g'ri kelsa shu
+       |     (source ga habar berilmeydi, tashib yuborildi deb)|targetlardan biri
+       |REJECT=tashib yuborish                                 |bajariladi
+       |     (source ga habar beriladi, tashib yuborildi deb)  |
+
+# Qoidalar ACL da yozilgani kabi IPTABLES da ham ketma ket yoziladi va shu ketma 
+ ketlikda tekshiriladi. Endi agar 1chi qoidaga tushmasa 2chi qoidaga o'tadi, 2chi
+ qoidaga ham tushmadi 3chiga o'tadi, 3chi qoidaga to'g'ri keldi, bo'ldi shu yerda
+ qoladi, 4chi qoidaga tushmeydi. Demak xulosa qilib qoidalar mos tushguncha ketma
+ ket ketoveradi. Agar umman tushmasachi, u quyidagicha qilinadi: 
+ ACL da ro'yhatdagi hech qaysi qoidaga tushmasa, eng so'ngi qoida "denay" ya'ni 
+ tashib yuborish degani. IPTABLES da esa eng so'ngi qoida "accept" degani, bu 
+ so'ngi qaror "policy" deb ataladi.
+ Ayrim firewall larda policy qatori "drop" bo'lib turadi va kamanda yozishingiz
+ bilan u ishga tushib ketadi, agar o'zizni blokleydigan kamanda yozgan bo'lsangiz
+ bitada bloklab qo'yadi. Endi iptables da u qator poumolchaniya accept bo'ladi.
+ 
+*iptables -L > iptablesda yozilgan qoidalarni ko'rish. uning ichida 3 hil 
+               tushuncha bor:
+
+      |OUTPUT = ens3 dan chiqish          | yoziladigan qoidalar qurilmaning  ens3
+Chain |INPUT = ens3 ga kirish             | portiga qandey holatda yozilishi, 
+      |FORWARD = shu sistema orqali o'tib | chiqishiga yoki kirishiga.
+                 ketuvchi paketlar
+
+$ Eng muhim qoidalardan biri, ya'ni kirishga (inputga) cheklov berish, bu 2 hil
+ bo'lishi mumkin:
+
+1) rule DROP     | kiruvchi qoidalarni hammasiga DROP, agar ularga tushmasa, oxiri
+   policy ACCEPT | ACCEPT bo'lsin
+
+2) rule ACCEPT | kiruvchi qoidalarni hammasiga ACCEPT, agar ularga tushmasa, oxiri
+   policy DROP | DROP bo'lsin
+
+# Bu aniq yozilishi kerak bo'lgan qoida, u quyidagicha yoziladi:
+*iptables -P INPUT DROP > -P=policy, policyni INPUT uchun drop qilish.
+
+# Policy ni INPUT uchun drop qilganimizdan so'ng, OUTPUT uchun ham hamma yo'llar
+ yopiladi, sababi ma'lumot chiqadi lekin kira olmeydi. 
+ Bundey xolatda nima qilish mumkin, iptables statefool fairewall deyiladi, u 
+ paketni holatlarini ham tekshira oladi, paketni xolatlari quyidagicha:
+
+1) NEW         > endi kelayotgan yangi paket                 |paket xolatlari 
+2) ESTABLISHED > o'sha paketga javob qaytarilishi            |quyidagicha 
+3) RELATED     > o'sha javobdan tashqari ham ma'lumot berildi|
+4) INVALID     > yuqoridagilarga tushmagan va paket xolatini | 
+                 aniqlolmasa shunga tushadi                  |
+
+# Xulosa: Policy ni INPUT uchun drop qilsangiz, u serverdan 8.8.8.8 ga ping
+ o'tishi uchun ESTABLISHED va RELATED ga ACCEPT berishingiz kerak.
+ Quyidagicha berish mumkin:
+
+*iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# Yuqoridagi kamandani xulosasi quyidagicha: INPUT ga qo'shebmiz conntrack degan 
+                                             modulni uni ichida ctstate degan 
+                                             kamanda ya'ni connection ni holatini
+                                             bildiradi, u holat ESTABLISHED va 
+                                             RELATED bo'lsa ACCEPT qil.
+# Bu kamandadan so'ng, shu kamanda yozilgan serverga tashqi tomondan ping berib
+ bo'lmeydi, lekin shu serverda turib internetga bog'lanish mumkin. 
+
+# Yuqoridagi kamandadan so'ng loopback ip ya'ni serverning servislariga o'zaro 
+ ping berolmeydi ichidagi servicelar o'zaro ma'lumot almasha olishmeydi, uni 
+ almashishi uchun quyidagicha kamanda yozilishi kerak:
+
+*iptables -A INPUT -i lo -j ACCEPT > 
+
+# Sizni serveringizda policyni INPUT uchun drop qilindi, sizga umman tashqi 
+tomondan ping yo'q, ammo sizni serverisda ssh servisi bor, undan boshqa tarmoqdagi
+ sysadmin foydalanishi kerak, uni foydalanishi uchun siz unga qoida yozishis kerak
+ qoidada siz portni, protocolni, ipni inobatga olishingiz kerak. Quyidagicha:
+
+*iptables -A INPUT -m iprange --src-range 192.168.1.1-192.168.1.15 -p tcp 
+ --dport 22 -j ACCEPT > 
+
+# iptablesga yangi qoida qo'shish. Oldin qoidalar bo'lsa uni tagidan, agar bo'masa
+ birinchidan boshlab yozadi.
+
+ |iptables| + |-A| + |Chain| + |rule rule| + |-j| + |Target|
+ 
+*iptables -A INPUT -s 10.99.99.0/24 -j ACCEPT > 10.99.99.0/24 tarmoq source bo'lsa
+                                                kirishga ruhsat degani
+$ Bita qurilmada bir nechta servislar ko'tarilgan bo'lsa, qaysidir servisga kirish
+ uchun o'sha servisni portidan foydalanamiz. (misol: ssh=22, http=80)
+
+# Qoidalar uchun options:
+-p --porotocol > protocol
+--dport > destination port
+--sport > source port
+-j --jump > targetni tanlash
+-m --match > modullni tanlash, ayrmi qoidalar o'zini mudullari b-n ishleydi.
+-iprange > modul nomi, bir vaqtni o'zida bir nechta iplarni ko'rsatish
+--src-range > source iplar range
+-s > source ip yoki butun tarmoqni ko'rsatish m-m
+-d > destination ip yoki butun tarmoqni ko'rsatish m-m
+-t > 
+-i --in-interface > ens3 ga kirib kelayotgan paketlar uchun 
+-o --out-interface > ens3 dan chiqib kelayotgan paketlar uchun  
+-n --numeric > 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
